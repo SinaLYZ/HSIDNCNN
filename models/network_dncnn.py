@@ -70,6 +70,54 @@ class DnCNN(nn.Module):
         n = self.model(x)
         return x-n
 
+# --------------------------------------------
+# HSIDnCNN
+# --------------------------------------------
+class HSIDnCNN(nn.Module):
+    """
+    HSI DnCNN for 5-band -> 1-band denoising.
+
+    Input:
+        x: [B, in_nc, H, W]
+           Example: 5 bands = [b-2, b-1, b, b+1, b+2]
+
+    Output:
+        denoised center band: [B, 1, H, W]
+
+    The network predicts the residual/noise of the center band only,
+    then subtracts it from the noisy center band.
+    """
+
+    def __init__(self, in_nc=5, out_nc=1, nc=64, nb=17, act_mode='BR', center_idx=2):
+        super(HSIDnCNN, self).__init__()
+
+        assert out_nc == 1, "HSIDnCNN is designed to output one target band."
+        assert in_nc >= 1, "in_nc must be >= 1."
+        assert 0 <= center_idx < in_nc, "center_idx must be within input channel range."
+        assert 'R' in act_mode or 'L' in act_mode, \
+            "Examples of activation function: R, L, BR, BL, IR, IL"
+
+        self.center_idx = center_idx
+        bias = True
+
+        m_head = B.conv(in_nc, nc, mode='C' + act_mode[-1], bias=bias)
+        m_body = [B.conv(nc, nc, mode='C' + act_mode, bias=bias) for _ in range(nb - 2)]
+        m_tail = B.conv(nc, out_nc, mode='C', bias=bias)
+
+        self.model = B.sequential(m_head, *m_body, m_tail)
+
+    def forward(self, x):
+        if x.dim() != 4:
+            raise ValueError(f"Expected input with shape [B, C, H, W], got {x.shape}")
+
+        if x.size(1) <= self.center_idx:
+            raise ValueError(
+                f"Input has {x.size(1)} channels, but center_idx={self.center_idx}"
+            )
+
+        center_band = x[:, self.center_idx:self.center_idx + 1, :, :]
+        pred_residual = self.model(x)
+        return center_band - pred_residual
 
 # --------------------------------------------
 # IRCNN denoiser

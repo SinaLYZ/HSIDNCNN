@@ -32,6 +32,18 @@ def define_G(opt):
                    nc=opt_net['nc'],
                    nb=opt_net['nb'],  # total number of conv layers
                    act_mode=opt_net['act_mode'])
+    # ----------------------------------------
+    # HSIDnCNN
+    # ----------------------------------------
+    elif net_type == 'hsi_dncnn':
+        from models.network_dncnn import HSIDnCNN as net
+        netG = net(
+            in_nc=opt_net['in_nc'],
+            out_nc=opt_net['out_nc'],
+            nc=opt_net['nc'],
+            nb=opt_net['nb'],
+            act_mode=opt_net['act_mode']
+        )
 
     # ----------------------------------------
     # Flexible DnCNN

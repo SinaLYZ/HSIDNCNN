@@ -1,0 +1,114 @@
+{
+  "task": "hsi_dncnn_5to1" // root/task/images-models-options
+
+  , "model": "plain" // keep "plain" for ModelPlain
+
+  , "gpu_ids": [0]
+
+  , "scale": 1
+
+  , "n_channels": 1 // target output channels; custom HSI dataset should use input_bands below
+
+  , "merge_bn": true
+  , "merge_bn_startpoint": 400000
+
+  , "path": {
+      "root": "hsi_denoising" // experiment output folder
+    , "pretrained_netG": null
+    // , "pretrained_netE": null
+    // , "pretrained_optimizerG": null
+  }
+
+  , "datasets": {
+      "train": {
+          "name": "train_dataset"
+        , "dataset_type": "hsi_dncnn"
+        , "dataroot_H": "trainsets/hsi_train" // folder containing clean HSI cubes
+        , "dataroot_L": null
+        , "data_format": "npy" // change to "mat", "tif", etc. if needed
+        , "input_bands": 5
+        , "neighbor_radius": 2 // total input bands = 2*neighbor_radius + 1
+        , "target_position": "center"
+        , "H_size": 40 // spatial patch size
+        , "boundary_mode": "reflect" // reflect | skip
+        , "noise_mode": "bandwise_random_gaussian"
+        , "sigma_min": 0
+        , "sigma_max": 50
+        , "sigma_unit": "255" // sigma interpreted in image scale [0,255]
+        , "same_sigma_for_all_5_bands": false
+        , "seed": null
+        , "dataloader_shuffle": true
+        , "dataloader_num_workers": 8
+        , "dataloader_batch_size": 64
+      }
+
+    , "test": {
+          "name": "val_dataset"
+        , "dataset_type": "hsi_dncnn"
+
+        , "dataroot_H": "testsets/hsi_val" // or hsi_test
+        , "dataroot_L": null
+
+        , "data_format": "npy" // change if needed
+        , "input_bands": 5
+        , "neighbor_radius": 2
+        , "target_position": "center"
+
+        , "H_size": null // use full image/cube slice during validation if your dataset supports it
+        , "boundary_mode": "reflect"
+
+        , "noise_mode": "bandwise_random_gaussian"
+        , "sigma_min": 0
+        , "sigma_max": 50
+        , "sigma_unit": "255"
+        , "same_sigma_for_all_5_bands": false
+        , "seed": 0 // fixed seed for reproducible validation
+      }
+  }
+
+  , "netG": {
+      "net_type": "hsi_dncnn"
+    , "in_nc": 5
+    , "out_nc": 1
+    , "nc": 64
+    , "nb": 17
+    , "gc": 32 // unused
+    , "ng": 2 // unused
+    , "reduction": 16 // unused
+    , "act_mode": "BR" // BN + ReLU, same spirit as DnCNN
+    , "upsample_mode": "convtranspose" // unused
+    , "downsample_mode": "strideconv" // unused
+    , "init_type": "orthogonal"
+    , "init_bn_type": "uniform"
+    , "init_gain": 0.2
+  }
+
+  , "train": {
+      "manual_seed": 0
+
+    , "G_lossfn_type": "l1"
+    , "G_lossfn_weight": 1.0
+
+    , "G_optimizer_type": "adam"
+    , "G_optimizer_lr": 1e-4
+    , "G_optimizer_betas": [0.9, 0.999]
+    , "G_optimizer_wd": 0
+    , "G_optimizer_clipgrad": null
+    , "G_optimizer_reuse": false
+
+    , "G_scheduler_type": "MultiStepLR"
+    , "G_scheduler_milestones": [200000, 400000, 600000, 800000, 1000000, 2000000]
+    , "G_scheduler_gamma": 0.5
+
+    , "G_regularizer_orthstep": null
+    , "G_regularizer_clipstep": null
+
+    , "G_param_strict": true
+    , "E_param_strict": true
+    , "E_decay": 0
+
+    , "checkpoint_test": 5000
+    , "checkpoint_save": 5000
+    , "checkpoint_print": 200
+  }
+}
