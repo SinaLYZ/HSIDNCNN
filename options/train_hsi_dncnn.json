@@ -23,7 +23,7 @@
       "train": {
           "name": "train_dataset"
         , "dataset_type": "hsi_dncnn"
-        , "dataroot_H": "trainsets/hsi_train" // folder containing clean HSI cubes
+        , "dataroot_H": "HsiData/trainset" // folder containing clean HSI cubes
         , "dataroot_L": null
         , "data_format": "npy" // change to "mat", "tif", etc. if needed
         , "input_bands": 5
@@ -46,7 +46,7 @@
           "name": "val_dataset"
         , "dataset_type": "hsi_dncnn"
 
-        , "dataroot_H": "testsets/hsi_val" // or hsi_test
+        , "dataroot_H": "HsiData/testset" // or hsi_test
         , "dataroot_L": null
 
         , "data_format": "npy" // change if needed

@@ -40,36 +40,105 @@ class DatasetHSIDnCNN(data.Dataset):
     """
 
     def __init__(self, opt):
-        super(DatasetHSIDnCNN, self).__init__()
-        print('Dataset: HSI denoising with neighboring bands and band-dependent AWGN.')
+    super(DatasetHSIDnCNN, self).__init__()
+    print('Dataset: HSI denoising with neighboring bands and band-dependent AWGN.')
 
-        self.opt = opt
-        self.phase = opt['phase']
+    self.opt = opt
+    self.phase = opt['phase']
+    self.patch_size = opt.get('H_size', 64)
 
-        self.patch_size = opt.get('H_size', 64)
-        self.in_bands = opt.get('in_bands', 5)
-        self.center_idx = opt.get('center_idx', self.in_bands // 2)
-        self.boundary_mode = opt.get('boundary_mode', 'reflect').lower()
+    # -------------------------------------------------
+    # Accept both old names and your current JSON names
+    # -------------------------------------------------
 
-        self.sigma_min = opt.get('sigma_min', 5)
-        self.sigma_max = opt.get('sigma_max', 50)
-        self.same_sigma_within_sample = opt.get('same_sigma_within_sample', False)
+    # data format / extension
+    cube_ext = opt.get('cube_ext', None)
+    data_format = opt.get('data_format', None)
+    if cube_ext is None:
+        if data_format is None:
+            cube_ext = '.npy'
+        else:
+            data_format = str(data_format).strip().lower()
+            cube_ext = data_format if data_format.startswith('.') else f'.{data_format}'
+    self.cube_ext = cube_ext
 
-        self.cube_ext = opt.get('cube_ext', '.npy')
-        self.cube_key = opt.get('cube_key', None)
-        self.band_dim = opt.get('band_dim', 'auto')   # auto / first / last / middle / 0 / 1 / 2
-        self.seed = opt.get('seed', 0)
+    # number of input bands
+    if 'in_bands' in opt:
+        self.in_bands = int(opt['in_bands'])
+    elif 'input_bands' in opt:
+        self.in_bands = int(opt['input_bands'])
+    elif 'neighbor_radius' in opt:
+        self.in_bands = 2 * int(opt['neighbor_radius']) + 1
+    else:
+        self.in_bands = 5
 
-        assert self.in_bands % 2 == 1, 'in_bands must be odd.'
-        assert 0 <= self.center_idx < self.in_bands, 'center_idx must be within input band range.'
-        assert self.sigma_min >= 0 and self.sigma_max >= self.sigma_min, 'Invalid sigma range.'
-        assert self.boundary_mode in ['reflect', 'replicate', 'wrap', 'valid', 'skip'], \
-            "boundary_mode must be one of: reflect, replicate, wrap, valid, skip"
+    # center band position
+    if 'center_idx' in opt:
+        self.center_idx = int(opt['center_idx'])
+    else:
+        target_position = opt.get('target_position', 'center')
+        if isinstance(target_position, str):
+            tp = target_position.strip().lower()
+            if tp == 'center':
+                self.center_idx = self.in_bands // 2
+            elif tp == 'left':
+                self.center_idx = 0
+            elif tp == 'right':
+                self.center_idx = self.in_bands - 1
+            else:
+                try:
+                    self.center_idx = int(tp)
+                except ValueError:
+                    raise ValueError(
+                        f'Unsupported target_position: {target_position}. '
+                        f'Use "center", "left", "right", or an integer index.'
+                    )
+        else:
+            self.center_idx = int(target_position)
 
-        self.paths_H = self._get_cube_paths(opt['dataroot_H'], self.cube_ext)
-        if len(self.paths_H) == 0:
-            raise ValueError(f'No hyperspectral cube files found in: {opt["dataroot_H"]}')
+    self.boundary_mode = opt.get('boundary_mode', 'reflect').lower()
 
+    # noise settings
+    self.noise_mode = str(opt.get('noise_mode', 'bandwise_random_gaussian')).lower()
+    if self.noise_mode not in ['bandwise_random_gaussian', 'gaussian', 'awgn']:
+        raise ValueError(
+            f'Unsupported noise_mode: {self.noise_mode}. '
+            f'Currently only Gaussian bandwise noise is supported.'
+        )
+
+    self.sigma_min = float(opt.get('sigma_min', 5))
+    self.sigma_max = float(opt.get('sigma_max', 50))
+
+    if 'same_sigma_within_sample' in opt:
+        self.same_sigma_within_sample = bool(opt['same_sigma_within_sample'])
+    else:
+        self.same_sigma_within_sample = bool(opt.get('same_sigma_for_all_5_bands', False))
+
+    sigma_unit = str(opt.get('sigma_unit', '255')).strip().lower()
+    if sigma_unit in ['255', 'image', 'uint8']:
+        self.sigma_scale = 255.0
+    elif sigma_unit in ['1', 'normalized', 'float']:
+        self.sigma_scale = 1.0
+    else:
+        raise ValueError(
+            f'Unsupported sigma_unit: {sigma_unit}. '
+            f'Use "255" or "1".'
+        )
+
+    self.cube_key = opt.get('cube_key', None)
+    self.band_dim = opt.get('band_dim', 'auto')   # auto / first / last / middle / 0 / 1 / 2
+    self.seed = opt.get('seed', 0)
+
+    assert self.in_bands % 2 == 1, 'in_bands must be odd.'
+    assert 0 <= self.center_idx < self.in_bands, 'center_idx must be within input band range.'
+    assert self.sigma_min >= 0 and self.sigma_max >= self.sigma_min, 'Invalid sigma range.'
+    assert self.boundary_mode in ['reflect', 'replicate', 'wrap', 'valid', 'skip'], \
+        "boundary_mode must be one of: reflect, replicate, wrap, valid, skip"
+
+    self.paths_H = self._get_cube_paths(opt['dataroot_H'], self.cube_ext)
+    if len(self.paths_H) == 0:
+        raise ValueError(f'No hyperspectral cube files found in: {opt["dataroot_H"]}')
+    
     def __getitem__(self, index):
         H_path = self.paths_H[index]
         L_path = H_path
@@ -125,7 +194,7 @@ class DatasetHSIDnCNN(data.Dataset):
         for i in range(self.in_bands):
             noise = rng.normal(
                 loc=0.0,
-                scale=sigmas[i] / 255.0,
+                scale=sigmas[i] / self.sigma_scale,
                 size=stack_L[:, :, i].shape
             ).astype(np.float32)
             stack_L[:, :, i] += noise
