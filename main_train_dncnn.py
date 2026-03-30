@@ -17,6 +17,10 @@ from utils import utils_option as option
 from data.select_dataset import define_Dataset
 from models.select_model import define_Model
 
+import sys
+import traceback
+from datetime import datetime
+from pprint import pformat
 
 '''
 # --------------------------------------------
@@ -41,6 +45,55 @@ from models.select_model import define_Model
 # https://github.com/xinntao/BasicSR
 # --------------------------------------------
 '''
+
+def _debug_value(x):
+    if torch.is_tensor(x):
+        info = {
+            'type': 'tensor',
+            'shape': list(x.shape),
+            'dtype': str(x.dtype),
+            'device': str(x.device)
+        }
+        if x.numel() > 0:
+            info['min'] = float(x.detach().min().item())
+            info['max'] = float(x.detach().max().item())
+        return info
+
+    if isinstance(x, np.ndarray):
+        info = {
+            'type': 'ndarray',
+            'shape': list(x.shape),
+            'dtype': str(x.dtype)
+        }
+        if x.size > 0:
+            info['min'] = float(np.min(x))
+            info['max'] = float(np.max(x))
+        return info
+
+    if isinstance(x, (list, tuple)):
+        return [ _debug_value(v) for v in x ]
+
+    if isinstance(x, dict):
+        return {k: _debug_value(v) for k, v in x.items()}
+
+    return str(x)
+
+
+def summarize_batch(data):
+    if data is None:
+        return None
+    return {k: _debug_value(v) for k, v in data.items()}
+
+
+def write_crash_dump(crash_log_path, stage, exc, **context):
+    with open(crash_log_path, 'a', encoding='utf-8') as f:
+        f.write('\n' + '=' * 100 + '\n')
+        f.write(f'[{datetime.now().isoformat()}] {stage}\n')
+        for k, v in context.items():
+            f.write(f'{k}: {pformat(v)}\n')
+        f.write('TRACEBACK:\n')
+        f.write(''.join(traceback.format_exception(type(exc), exc, exc.__traceback__)))
+        f.write('\n')
 
 
 def main(json_path='options/train_dncnn.json'):
@@ -244,6 +297,9 @@ def main(json_path='options/train_dncnn.json'):
     logger.info('Saving the final model.')
     model.save('latest')
     logger.info('End of training.')
+    # Add by Sina
+    logger = logging.getLogger(logger_name)
+    logger.info(option.dict2str(opt))
 
 
 if __name__ == '__main__':
