@@ -95,10 +95,6 @@ def main() -> None:
     best_model_path = os.path.join(checkpoint_dir, "dncnn_sigma_map_best.pth")
     last_model_path = os.path.join(checkpoint_dir, "dncnn_sigma_map_last.pth")
 
-    # Example band-dependent sigmas
-    # Replace these with your real values
-    band_sigmas = {i: 25.0 for i in range(151)}
-
     # =========================
     # Setup
     # =========================
